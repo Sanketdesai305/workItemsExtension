@@ -1,0 +1,50 @@
+{
+    "manifestVersion": 1,
+    "id": "workItemDetails",
+    "publisher": "sanketdesai",
+    "version": "1.0.196",
+    "name": "workItemDetails",
+    "description": "A sample extension to view work item details",
+    "public": false,
+    "categories": ["Azure Repos"],
+    "targets": [
+        {
+            "id": "Microsoft.VisualStudio.Services"
+        }
+    ],
+    "contributions": [
+        {
+            "id": "work-Item-Details",
+            "type": "ms.vss-web.hub",
+            "targets": [
+                "ms.vss-web.collection-admin-hub-group"
+            ],
+            "properties": {
+                "name": "work-Item-Details",
+                "uri": "static/index.html"
+            }
+        }
+    ], 
+    "scopes": [
+        "vso.identity",
+        "vso.profile",
+        "vso.project",
+        "vso.work",
+        "vso.workitemsearch",
+        "vso.build",
+        "vso.release",
+        "vso.code",
+        "vso.graph"
+      ],
+    "files": [
+        {
+            "path": "static",
+            "addressable": true
+        },
+        {
+            "path": "node_modules/vss-web-extension-sdk/lib",
+            "addressable": true,
+            "packagePath": "lib"
+        }
+    ]
+}

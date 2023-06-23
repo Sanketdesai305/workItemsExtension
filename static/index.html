@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+    <script src="../lib/VSS.SDK.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <script type="text/javascript" defer>
+        VSS.init({
+            explicitNotifyLoaded: true,
+            usePlatformScripts: true,
+            usePlatformStyles: true
+        });
+        VSS.require(["TFS/Core/RestClient","VSS/Controls"],
+            function (restClient,Controls) {
+                Controls.Enhancement.ensureEnhancements();
+                var client = restClient.getClient();
+                var dataService;
+                var collectionName;
+                var projects;
+                var workItemDataCount;
+                var allWorkItems;
+                var IDS=[];
+                var workItemIds=[];
+
+                async function initDataService() {
+                    dataService = await VSS.getService(VSS.ServiceIds.ExtensionData);
+                }
+                  
+                async function getworkitem(organization,projectName,token){
+                const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo] FROM WorkItems WHERE [System.TeamProject] = '${projectName}'`;
+                    const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/wiql?api-version=7.0`;
+                    const response = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Basic " + btoa("" + ":" + `${token}`)
+                    },
+                    body: JSON.stringify({
+                        query: wiql,
+                    }),
+                    },{ mode: 'no-cors'});
+                    console.log('workitem response');
+                    const data = await response.json();
+                    console.log('workitem from query',data);
+                    IDS = data.workItems;
+                    console.log("IDS",IDS);
+                    IDS && IDS.forEach(element => {
+                        workItemIds.push(element.id);
+                    });
+                    return data;
+                }
+                //another function
+                const batchSize = 200; // Maximum number of IDs to process at once
+
+                async function getWorkItemsBatch(workItemIds,organization,projectName,token) {
+                const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/workitemsbatch?api-version=7.0`;
+                if (!workItemIds || workItemIds.length === 0) {
+                    console.log('No work item IDs to process.');
+                    return;
+                }
+                const payload = {
+                    ids: workItemIds,
+                    $expand: "all"
+                };
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Basic " + btoa("" + ":" + `${token}`)
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                const errorResponse = await response.json();
+                console.error('Work item batch request failed:', errorResponse);
+                // Additional error handling if needed
+                }
+                const data = await response.json();
+
+                // Logging example: Iterate through the work items and log their details
+                // if (data && Array.isArray(data.value)) {
+                    for (const workItem of data.value) {
+                        console.log(`workItem===>`,workItem);
+        console.log(`ID: ${workItem.id}`);
+        console.log(`Title: ${workItem.fields['System.Title']}`);
+        //TABLE   
+        var names = [];     
+        if (workItem.relations && workItem.relations.length > 0) {
+  let hasParent = false;
+  let hasChild = false;
+
+  for (const relation of workItem.relations) {
+    if (relation.attributes && relation.attributes.name.toLowerCase().includes('parent')) {
+      hasParent = true;
+    } else if (relation.attributes && relation.attributes.name.toLowerCase().includes('child')) {
+      hasChild = true;
+    }
+        // Extract the last number from the URL
+        const urlParts = relation.url.split('/');
+        const lastNumber = urlParts[urlParts.length - 1];
+        console.log('Last Number:', lastNumber);
+        if (!isNaN(lastNumber)) {
+            names.push(lastNumber)
+        }  
+  }
+
+  if (hasParent) {
+    // Add the work item data to the parent table
+    const parentTableBody = document.getElementById('parentTableBody');
+    parentTableBody.appendChild(createTableRow(workItem));
+  } else if (hasChild) {
+    // Add the work item data to the child table
+    const childTableBody = document.getElementById('childTableBody');
+    childTableBody.appendChild(createTableRow(workItem));
+  } else {
+    // Add the work item data to the other table
+    const otherTableBody = document.getElementById('otherTableBody');
+    otherTableBody.appendChild(createTableRow(workItem));
+  }
+} else {
+  // Add the work item data to the other table if no relations are available
+  const otherTableBody = document.getElementById('otherTableBody');
+  otherTableBody.appendChild(createTableRow(workItem));
+}
+
+// Helper function to create a table row with work item data
+function createTableRow(workItem) {
+  const row = document.createElement('tr');
+
+  const idCell = document.createElement('td');
+  idCell.textContent = workItem.id;
+  row.appendChild(idCell);
+
+  const titleCell = document.createElement('td');
+  titleCell.textContent = workItem.fields['System.Title'];
+  row.appendChild(titleCell);
+
+  const workItemType = document.createElement('td');
+  workItemType.textContent = `${workItem.fields['System.WorkItemType']}`;
+  row.appendChild(workItemType);
+
+  const statusStartDateCell = document.createElement('td');
+  statusStartDateCell.textContent = `${workItem.fields['System.State']}`;
+  row.appendChild(statusStartDateCell);
+
+  const StartDateCell = document.createElement('td');
+  StartDateCell.textContent = workItem.fields['System.CreatedDate'];
+  row.appendChild(StartDateCell);
+
+
+  const priorityCell = document.createElement('td');
+  priorityCell.textContent = workItem.fields['Microsoft.VSTS.Common.Priority'];
+  row.appendChild(priorityCell);
+
+  const effortCell = document.createElement('td');
+  effortCell.textContent = workItem.fields['System.CreatedBy'].displayName;
+  row.appendChild(effortCell);
+
+  const businessValueCell = document.createElement('td');
+  businessValueCell.textContent = workItem.fields['System.ChangedDate'];
+  row.appendChild(businessValueCell);
+
+  const timeCriticalityCell = document.createElement('td');
+  timeCriticalityCell.textContent = workItem.fields['System.AuthorizedAs'].displayName;
+  row.appendChild(timeCriticalityCell);
+
+  const valueAreaCell = document.createElement('td');
+  valueAreaCell.textContent = names;
+  row.appendChild(valueAreaCell);
+
+  return row;
+}
+        //TABLE
+        console.log('---');
+      }
+                }
+
+                async function processBatches(idArray,organization,projectName,token) {
+                let startIndex = 0;
+                let endIndex = batchSize;
+
+                do {
+                    const batch = idArray.slice(startIndex, endIndex);
+                    await getWorkItemsBatch(batch,organization,projectName,token);
+
+                    startIndex = endIndex;
+                    endIndex = Math.min(startIndex + batchSize, idArray.length);
+                } while (startIndex < idArray.length);
+                }
+
+
+
+                VSS.ready(async function () {
+                    await initDataService();
+
+
+                    projects = await client.getProjects();
+                    console.log(projects);
+                    console.log('le', projects.length);
+                    var context = await VSS.getWebContext();
+                    console.log(context);
+                    var loggedinUser = context.user.email;
+                    console.log(loggedinUser);
+                    var accesdetails = await VSS.getAccessToken();
+                    console.log(accesdetails);
+                    var token = accesdetails.token;
+                    console.log(token);
+                    var organization = context.collection.name;
+                    
+
+                    // Call the function to fetch work items
+                    async function performOperation(organization, projectName, token){
+                        try {
+                                await getworkitem(organization, projectName, token);
+                                console.log("workItemIds", workItemIds);
+                        
+                                processBatches(workItemIds,organization,projectName,token);
+                            } catch (error) {
+                                console.error('Error:', error);
+                            }
+                    }
+
+    //DROPDOWN
+    var dropdown = document.getElementById('projectDropdown');
+    var selectedProject;
+    var projectId;
+    var projectName;
+    // Sort the projects by name before iterating over them
+    projects.sort((a, b) => a.name.localeCompare(b.name));
+    // Iterate over the projects array and create an option element for each project
+    projects.forEach((project) => {
+    var option = document.createElement('option');
+    option.value = project.id; // Set the value of the option to the project ID
+    option.textContent = project.name; // Set the text content of the option to the project name
+    dropdown.appendChild(option); // Add the option to the dropdown
+    });
+    dropdown.addEventListener('change', (event) => {
+  // Clear the parent table
+  document.getElementById('parentTableBody').innerHTML = '';
+
+  // Clear the child table
+  document.getElementById('childTableBody').innerHTML = '';
+
+  // Clear the other table
+  document.getElementById('otherTableBody').innerHTML = '';
+
+  var selectedProjectId = event.target.value;
+  selectedProject = projects.find((project) => project.id === selectedProjectId);
+  projectName = selectedProject.name;
+
+  // Perform the desired operations using the selected project
+  console.log('Selected Project:', projectName);
+
+  // Clear the workItemIds array
+  workItemIds = [];
+    performOperation(organization, projectName, token);
+    // Function to handle the download button click
+// Function to convert a table to CSV format
+function convertTableToCSV(tableId) {
+  const table = document.getElementById(tableId);
+  const rows = Array.from(table.getElementsByTagName('tr'));
+
+  return rows.map(row => {
+    const columns = Array.from(row.getElementsByTagName('td'));
+    const rowData = columns.map(column => column.innerText);
+    return rowData.join(',');
+  }).join('\n');
+}
+
+// Function to handle the download button click
+function handleDownloadButtonClick() {
+  const parentTableContent = convertTableToCSV('parentTable');
+  const childTableContent = convertTableToCSV('childTable');
+  const otherTableContent = convertTableToCSV('otherTable');
+  const combinedContent = `${parentTableContent}\n${childTableContent}\n${otherTableContent}`;
+
+  const element = document.createElement('a');
+  const file = new Blob([combinedContent], { type: 'text/csv' });
+  element.href = URL.createObjectURL(file);
+  element.download = 'combinedTables.csv';
+  element.click();
+}
+
+// Attach event listener to the download button
+const downloadBtn = document.getElementById('downloadBtn');
+downloadBtn.addEventListener('click', handleDownloadButtonClick);
+    });
+                        VSS.notifyLoadSucceeded();
+                });    
+                    
+            });
+    </script>
+</head>
+
+<body>
+    <div class="header">
+        <p id="headerName">Filter by projects</p>
+        <select id="projectDropdown">
+            <option disabled selected>Select Project</option>
+          </select>
+          <button id="downloadBtn">Download Combined Tables</button>
+    </div>
+    <div class="container">
+        <!-- Table for parent items -->
+        <table id="parentTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Title</th>
+              <th>WorkItemType</th>
+              <th>Status</th>
+              <th>Start Date</th>
+              <th>Priority</th>
+              <th>CreatedBy</th>
+              <th>ChangedDate</th>
+              <th>AuthorizedAs</th>
+              <th>Linked WorkItems</th>
+            </tr>
+          </thead>
+          <tbody id="parentTableBody"></tbody>
+        </table>
+    
+        <!-- Table for child items -->
+        <table id="childTable">
+          <tbody id="childTableBody"></tbody>
+        </table>
+    
+        <!-- Table for other items -->
+        <table id="otherTable">
+          <tbody id="otherTableBody"></tbody>
+        </table>
+      </div>
+</body>
+
+</html>
