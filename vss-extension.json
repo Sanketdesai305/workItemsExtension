@@ -2,7 +2,7 @@
     "manifestVersion": 1,
     "id": "workItemDetails",
     "publisher": "sanketdesai",
-    "version": "1.0.196",
+    "version": "1.0.534",
     "name": "workItemDetails",
     "description": "A sample extension to view work item details",
     "public": false,
@@ -14,13 +14,13 @@
     ],
     "contributions": [
         {
-            "id": "work-Item-Details",
+            "id": "workItemDetails",
             "type": "ms.vss-web.hub",
             "targets": [
                 "ms.vss-web.collection-admin-hub-group"
             ],
             "properties": {
-                "name": "work-Item-Details",
+                "name": "workItemDetails",
                 "uri": "static/index.html"
             }
         }
@@ -30,11 +30,7 @@
         "vso.profile",
         "vso.project",
         "vso.work",
-        "vso.workitemsearch",
-        "vso.build",
-        "vso.release",
-        "vso.code",
-        "vso.graph"
+        "vso.workitemsearch"
       ],
     "files": [
         {

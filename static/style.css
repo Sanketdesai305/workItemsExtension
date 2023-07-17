@@ -2,7 +2,6 @@ html,body {
   background-color:white;
   color: black;
   margin: 0%;
-  font-family: "Segoe UI VSS (Regular)","-apple-system",BlinkMacSystemFont,"Segoe UI",sans-serif;
   overflow-y: auto;
 }
 .header{
@@ -28,13 +27,16 @@ html,body {
     padding: 8px;
   }
   th {
-    background-color: #f2f2f2;
+    background-color: #99ccff;
   }
   table {
     table-layout: fixed;
     width: 100%;
     margin:auto;
   }
+  .container {
+    overflow-x: auto;
+}
   
   th,
   td {
@@ -44,75 +46,53 @@ html,body {
     align-items: center;
     justify-content: center;
   }
-  #parentTable th:nth-child(2),
-  #parentTable td:nth-child(2),
-  #childTable th:nth-child(2),
-  #childTable td:nth-child(2),
-  #otherTable th:nth-child(2),
-  #otherTable td:nth-child(2) {
-    width: 200px; /* Set the desired width for the Title cell */
-  }
 
-  #parentTable th:nth-child(8),
-  #parentTable td:nth-child(8),
-  #childTable th:nth-child(8),
-  #childTable td:nth-child(8),
-  #otherTable th:nth-child(8),
-  #otherTable td:nth-child(8) {
-    width: 150px; /* Set the desired width for the ChangedDate cell */
-  }
-
-  #parentTable th:nth-child(5),
-  #parentTable td:nth-child(5),
-  #childTable th:nth-child(5),
-  #childTable td:nth-child(5),
-  #otherTable th:nth-child(5),
-  #otherTable td:nth-child(5) {
-    width: 150px; /* Set the desired width for the CreatedDate cell */
-  }
-  #parentTable th:nth-child(3),
-  #parentTable td:nth-child(3),
-  #childTable th:nth-child(3),
-  #childTable td:nth-child(3),
-  #otherTable th:nth-child(3),
-  #otherTable td:nth-child(3) {
-    width: 110px; /* Set the desired width for the CreatedDate cell */
-  }
-  #parentTable th:nth-child(1),
-  #parentTable td:nth-child(1),
-  #childTable th:nth-child(1),
-  #childTable td:nth-child(1),
-  #otherTable th:nth-child(1),
-  #otherTable td:nth-child(1) {
-    width: 50px; /* Set the desired width for the ID cell */
-  }
-
-  #parentTable th:nth-child(6),
-  #parentTable td:nth-child(6),
-  #childTable th:nth-child(6),
-  #childTable td:nth-child(6),
-  #otherTable th:nth-child(6),
-  #otherTable td:nth-child(6) {
-    width: 80px; /* Set the desired width for the Priority cell */
-  }
-  #parentTable th:nth-child(10),
-  #parentTable td:nth-child(10),
-  #childTable th:nth-child(10),
-  #childTable td:nth-child(10),
-  #otherTable th:nth-child(10),
-  #otherTable td:nth-child(10) {
-    width: 80px; /* Set the desired width for the Priority cell */
-  }
-  #parentTable th:nth-child(9),
-  #parentTable td:nth-child(9),
-  #childTable th:nth-child(9),
-  #childTable td:nth-child(9),
-  #otherTable th:nth-child(9),
-  #otherTable td:nth-child(9) {
-    width: 110px; /* Set the desired width for the Priority cell */
-  }
   .container{
     margin:auto;
-    max-width:90%;
     margin-bottom: 50px;
   }
+#downloadBtn {
+    margin: 5px;
+}
+
+th,td{
+  width:150px;
+}
+#buDropdown,#verticalHeadDropdown,#workFlowTypeDropdown,#stateDropdown{
+  margin: 3px 3px;
+  padding: 10px;
+  width: 20%;
+  border-radius: 2px;
+  border-style: hidden;
+  background-color: transparent;
+  float:right;
+}
+#buDropdown:hover{
+  background-color: var(--palette-black-alpha-6,rgba(0, 0, 0, .06));
+}
+.loading {
+  position: fixed;
+  top: 190px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(248,248,248,1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  z-index: 1000;
+}
+.highlighted-row {
+  background-color: #dcdcdc;
+}
+.red-background{
+  background-color: #8b0000;
+}
+.amber-background{
+  background-color: #ffa500;
+}
+.green-background{
+  background-color: #006400;
+}

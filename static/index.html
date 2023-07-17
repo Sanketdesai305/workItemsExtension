@@ -2,335 +2,558 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 
 <head>
-    <script src="../lib/VSS.SDK.min.js"></script>
-    <link rel="stylesheet" href="style.css">
-    <script type="text/javascript" defer>
-        VSS.init({
-            explicitNotifyLoaded: true,
-            usePlatformScripts: true,
-            usePlatformStyles: true
-        });
-        VSS.require(["TFS/Core/RestClient","VSS/Controls"],
-            function (restClient,Controls) {
-                Controls.Enhancement.ensureEnhancements();
-                var client = restClient.getClient();
-                var dataService;
-                var collectionName;
-                var projects;
-                var workItemDataCount;
-                var allWorkItems;
-                var IDS=[];
-                var workItemIds=[];
+  <script src="../lib/VSS.SDK.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>  
+  <link rel="stylesheet" href="style.css">
+  <script type="text/javascript" defer>
+      VSS.init({
+          explicitNotifyLoaded: true,
+          usePlatformScripts: true,
+          usePlatformStyles: true
+      });
+      VSS.require(["TFS/Core/RestClient","VSS/Controls"],
+          function (restClient,Controls) {
+              Controls.Enhancement.ensureEnhancements();
+              var client = restClient.getClient();
+              var dataService;
+              var collectionName;
+              var projects;
+              var workItemDataCount;
+              var allWorkItems;
+              var IDS=[];
+              var workItemIds=[];
+              var WORKITEMSs;
+              var work = [];
+              var uniqueObjects = {};
+              var uniqueObj;
+              var BUTypes =[];
+              var filteredItems =[];
 
-                async function initDataService() {
-                    dataService = await VSS.getService(VSS.ServiceIds.ExtensionData);
+              async function processWorkItem(workItem, token) {
+              const parentTableBody = document.getElementById('parentTableBody');
+              parentTableBody.appendChild(createTableRow(workItem,token));
+
+              if (workItem.relations && Array.isArray(workItem.relations)) {
+                for (const relation of workItem.relations) {
+                  if (
+                    relation.attributes &&
+                    relation.attributes.name.toLowerCase().includes('child')
+                  ) {
+                    const childWorkItemUrl = relation.url;
+                    const childWorkItem = await getWorkItemDetails(childWorkItemUrl, token);
+                    if (childWorkItem) {
+                      await processWorkItem(childWorkItem, token);
+                    }
+                  }
                 }
-                  
-                async function getworkitem(organization,projectName,token){
-                const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo] FROM WorkItems WHERE [System.TeamProject] = '${projectName}'`;
-                    const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/wiql?api-version=7.0`;
-                    const response = await fetch(url, {
-                    method: "POST",
+              }
+            }
+
+
+              async function processWorkItems(workItems, token) {
+                const sortedWorkItems = [...workItems].sort((a, b) => {
+                  const aChildCount = a.relations ? a.relations.filter(relation => relation.attributes.name === 'Child').length : 0;
+                  const bChildCount = b.relations ? b.relations.filter(relation => relation.attributes.name === 'Child').length : 0;
+                  return bChildCount - aChildCount;
+                });
+
+                for (const workItem of sortedWorkItems) {
+                    await processWorkItem(workItem, token);
+                }
+              }
+
+              async function getWorkItemDetails(url,token) {
+                try{
+                  const Res = await fetch(url,{
                     headers: {
-                        "Content-Type": "application/json",
-                        Authorization: "Basic " + btoa("" + ":" + `${token}`)
-                    },
-                    body: JSON.stringify({
-                        query: wiql,
-                    }),
-                    },{ mode: 'no-cors'});
-                    console.log('workitem response');
-                    const data = await response.json();
-                    console.log('workitem from query',data);
-                    IDS = data.workItems;
-                    console.log("IDS",IDS);
-                    IDS && IDS.forEach(element => {
-                        workItemIds.push(element.id);
-                    });
-                    return data;
+                      "Content-Type": "application/json",
+                      Authorization: "Basic " + btoa("" + ":" + `${token}`)
+                  }
+                  });
+                    const releaseData = await Res.json();
+                    return releaseData;
+                }catch(e){
+                  console.log(e);
                 }
-                //another function
-                const batchSize = 200; // Maximum number of IDs to process at once
+                }
 
-                async function getWorkItemsBatch(workItemIds,organization,projectName,token) {
-                const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/workitemsbatch?api-version=7.0`;
-                if (!workItemIds || workItemIds.length === 0) {
-                    console.log('No work item IDs to process.');
-                    return;
-                }
-                const payload = {
-                    ids: workItemIds,
-                    $expand: "all"
+                // function to create a table row with work item data
+                function createTableRow(workItem,token) {
+                     //SET CHILD STATE TO RED
+                function setChildStateToRed(workItem) {
+                  var currentDated = new Date();
+                  currentDated.setHours(0, 0, 0, 0);
+
+                  if (workItem.fields && workItem.fields['Custom.ScheduleFinish'] && workItem.fields['System.State'] !== 'Closed') {
+                    var scheduleFinish = new Date(workItem.fields['Custom.ScheduleFinish']);
+                    scheduleFinish.setHours(0, 0, 0, 0); // Set schedule finish date to midnight for accurate comparison
+
+                    var timeDiff = currentDated.getTime() - scheduleFinish.getTime();
+                    var daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+
+                    return daysDiff >= 15; // Return true if the current date is not more than 15 days from the schedule finish date
+                  }
+
+                  return false;
                 };
 
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: "Basic " + btoa("" + ":" + `${token}`)
-                    },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) {
-                const errorResponse = await response.json();
-                console.error('Work item batch request failed:', errorResponse);
-                // Additional error handling if needed
-                }
-                const data = await response.json();
+               
+                        const row = document.createElement('tr');
+                        if (workItem.fields && workItem.fields['System.WorkItemType'] === 'Project') {
+                          row.classList.add('highlighted-row');
+                        getChildWorkItems(workItem, token).then(childWorkItems => {
+                          const childCount = childWorkItems.length;
+                          console.log(`Child count: ${childCount}`);
+                          if (childCount > 0) {
+                            const completedChildCount = childWorkItems.filter(child => child.fields && child.fields['System.State'] === 'Closed').length;
+                            const completionPercentage = (completedChildCount / childCount) * 100;
+                            console.log(`Completion Percentage: ${completionPercentage}%`);
+                            //DATE COMPARISON
+                            var currentDate = new Date();
+                            currentDate.setHours(0, 0, 0, 0); // Set current date to midnight for accurate comparison
 
-                // Logging example: Iterate through the work items and log their details
-                // if (data && Array.isArray(data.value)) {
-                    for (const workItem of data.value) {
-                        console.log(`workItem===>`,workItem);
-        console.log(`ID: ${workItem.id}`);
-        console.log(`Title: ${workItem.fields['System.Title']}`);
-        //TABLE   
-        var names = [];     
-        if (workItem.relations && workItem.relations.length > 0) {
-  let hasParent = false;
-  let hasChild = false;
+                            const delayedChild = childWorkItems.filter(child => {
+                              if (child.fields && child.fields['Custom.ScheduleFinish'] && child.fields['System.State'] !=='Closed') {
+                                var scheduleFinish = new Date(child.fields['Custom.ScheduleFinish']);
+                                scheduleFinish.setHours(0, 0, 0, 0); // Set schedule finish date to midnight for accurate comparison
 
-  for (const relation of workItem.relations) {
-    if (relation.attributes && relation.attributes.name.toLowerCase().includes('parent')) {
-      hasParent = true;
-    } else if (relation.attributes && relation.attributes.name.toLowerCase().includes('child')) {
-      hasChild = true;
-    }
-        // Extract the last number from the URL
-        const urlParts = relation.url.split('/');
-        const lastNumber = urlParts[urlParts.length - 1];
-        console.log('Last Number:', lastNumber);
-        if (!isNaN(lastNumber)) {
-            names.push(lastNumber)
-        }  
-  }
+                                var timeDiff = currentDate.getTime() - scheduleFinish.getTime();
+                                var daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+                                var monthDiff = (currentDate.getMonth() + currentDate.getFullYear() * 12) - (scheduleFinish.getMonth() + scheduleFinish.getFullYear() * 12);
 
-  if (hasParent) {
-    // Add the work item data to the parent table
-    const parentTableBody = document.getElementById('parentTableBody');
-    parentTableBody.appendChild(createTableRow(workItem));
-  } else if (hasChild) {
-    // Add the work item data to the child table
-    const childTableBody = document.getElementById('childTableBody');
-    childTableBody.appendChild(createTableRow(workItem));
-  } else {
-    // Add the work item data to the other table
-    const otherTableBody = document.getElementById('otherTableBody');
-    otherTableBody.appendChild(createTableRow(workItem));
-  }
-} else {
-  // Add the work item data to the other table if no relations are available
-  const otherTableBody = document.getElementById('otherTableBody');
-  otherTableBody.appendChild(createTableRow(workItem));
-}
+                                return monthDiff > 0 || (monthDiff === 0 && daysDiff > 15);
+                              }
 
-// Helper function to create a table row with work item data
-function createTableRow(workItem) {
-  const row = document.createElement('tr');
+                              return false; // Filter out child work items with missing or invalid Custom.ScheduleFinish
+                            });
 
-  const idCell = document.createElement('td');
-  idCell.textContent = workItem.id;
-  row.appendChild(idCell);
-
-  const titleCell = document.createElement('td');
-  titleCell.textContent = workItem.fields['System.Title'];
-  row.appendChild(titleCell);
-
-  const workItemType = document.createElement('td');
-  workItemType.textContent = `${workItem.fields['System.WorkItemType']}`;
-  row.appendChild(workItemType);
-
-  const statusStartDateCell = document.createElement('td');
-  statusStartDateCell.textContent = `${workItem.fields['System.State']}`;
-  row.appendChild(statusStartDateCell);
-
-  const StartDateCell = document.createElement('td');
-  StartDateCell.textContent = workItem.fields['System.CreatedDate'];
-  row.appendChild(StartDateCell);
-
-
-  const priorityCell = document.createElement('td');
-  priorityCell.textContent = workItem.fields['Microsoft.VSTS.Common.Priority'];
-  row.appendChild(priorityCell);
-
-  const effortCell = document.createElement('td');
-  effortCell.textContent = workItem.fields['System.CreatedBy'].displayName;
-  row.appendChild(effortCell);
-
-  const businessValueCell = document.createElement('td');
-  businessValueCell.textContent = workItem.fields['System.ChangedDate'];
-  row.appendChild(businessValueCell);
-
-  const timeCriticalityCell = document.createElement('td');
-  timeCriticalityCell.textContent = workItem.fields['System.AuthorizedAs'].displayName;
-  row.appendChild(timeCriticalityCell);
-
-  const valueAreaCell = document.createElement('td');
-  valueAreaCell.textContent = names;
-  row.appendChild(valueAreaCell);
-
-  return row;
-}
-        //TABLE
-        console.log('---');
-      }
-                }
-
-                async function processBatches(idArray,organization,projectName,token) {
-                let startIndex = 0;
-                let endIndex = batchSize;
-
-                do {
-                    const batch = idArray.slice(startIndex, endIndex);
-                    await getWorkItemsBatch(batch,organization,projectName,token);
-
-                    startIndex = endIndex;
-                    endIndex = Math.min(startIndex + batchSize, idArray.length);
-                } while (startIndex < idArray.length);
-                }
-
-
-
-                VSS.ready(async function () {
-                    await initDataService();
-
-
-                    projects = await client.getProjects();
-                    console.log(projects);
-                    console.log('le', projects.length);
-                    var context = await VSS.getWebContext();
-                    console.log(context);
-                    var loggedinUser = context.user.email;
-                    console.log(loggedinUser);
-                    var accesdetails = await VSS.getAccessToken();
-                    console.log(accesdetails);
-                    var token = accesdetails.token;
-                    console.log(token);
-                    var organization = context.collection.name;
-                    
-
-                    // Call the function to fetch work items
-                    async function performOperation(organization, projectName, token){
-                        try {
-                                await getworkitem(organization, projectName, token);
-                                console.log("workItemIds", workItemIds);
-                        
-                                processBatches(workItemIds,organization,projectName,token);
-                            } catch (error) {
-                                console.error('Error:', error);
+                            console.log("delayedChild",delayedChild);
+                         
+                            //DATE COMPARISON
+                            if (completionPercentage > 80 && delayedChild.length==0) {
+                              statusStartDateCell.classList.add('green-background');
+                            } else if (completionPercentage > 50 && completionPercentage < 80 && delayedChild.length==0) {
+                              statusStartDateCell.classList.add('amber-background');
+                            } else if (completionPercentage < 50 || delayedChild.length!==0) {
+                              statusStartDateCell.classList.add('red-background');
+                            } 
+                          } else {
+                            statusStartDateCell.classList.add('highlighted-row');
+                          }
+                        });
+                      }
+                         async function getChildWorkItems(workItem, token) {
+                          const childWorkItems = [];
+                          
+                          if (workItem.relations && Array.isArray(workItem.relations)) {
+                            for (const relation of workItem.relations) {
+                              if (
+                                relation.attributes &&
+                                relation.attributes.name.toLowerCase().includes('child')
+                              ) {
+                                const childWorkItemUrl = relation.url;
+                                const childWorkItem = await getWorkItemDetails(childWorkItemUrl, token);
+                                if (childWorkItem) {
+                                  childWorkItems.push(childWorkItem);
+                                }
+                              }
                             }
+                          }
+                          
+                          return childWorkItems;
+                        }
+                        
+                        const Workflow_typeCell = document.createElement('td');
+                        Workflow_typeCell.textContent = workItem.fields['Custom.Workflow_type'];
+                        row.appendChild(Workflow_typeCell);
+
+                        const Type_of_ProjectCell = document.createElement('td');
+                        Type_of_ProjectCell.textContent = workItem.fields['Custom.Type_of_Project'];
+                        row.appendChild(Type_of_ProjectCell);
+                        
+                        const Application_NameCell = document.createElement('td');
+                        Application_NameCell.textContent = workItem.fields['Custom.Application_Name'];
+                        row.appendChild(Application_NameCell);
+
+                        const idCell = document.createElement('td');
+                        idCell.textContent = workItem.fields['System.Id'];
+                        row.appendChild(idCell);
+
+                        const titleCell = document.createElement('td');
+                        titleCell.textContent = workItem.fields['System.Title'];
+                        row.appendChild(titleCell);
+                                               
+                        const ScheduleStartCell = document.createElement('td');
+                        ScheduleStartCell.textContent = workItem.fields['Custom.ScheduleStart'];
+                        row.appendChild(ScheduleStartCell);
+
+                        const ScheduleFinishCell = document.createElement('td');
+                        ScheduleFinishCell.textContent = workItem.fields['Custom.ScheduleFinish'];
+                        row.appendChild(ScheduleFinishCell);
+                      
+                        const ActualStartdateCell = document.createElement('td');
+                        ActualStartdateCell.textContent = workItem.fields['Custom.ActualStartdate'];
+                        row.appendChild(ActualStartdateCell);
+
+                        const ActualEndDateCell = document.createElement('td');
+                        ActualEndDateCell.textContent = workItem.fields['Custom.ActualEndDate'];
+                        row.appendChild(ActualEndDateCell);
+                       
+                        const Project_PhaseCell = document.createElement('td');
+                        Project_PhaseCell.textContent = workItem.fields['Custom.Project_Phase'];
+                        row.appendChild(Project_PhaseCell);
+                        
+                        const statusStartDateCell = document.createElement('td');
+                        statusStartDateCell.textContent = `${workItem.fields['System.State']}`;
+                        row.appendChild(statusStartDateCell);
+                       
+                        var red = setChildStateToRed(workItem);
+                        if(red){
+                          statusStartDateCell.classList.add('red-background');
+                        }
+
+                        const Project_ManagerCell = document.createElement('td');
+                        Project_ManagerCell.textContent = workItem.fields['Custom.Project_Manager'];
+                        row.appendChild(Project_ManagerCell);
+
+                        const Vertical_HeadCell = document.createElement('td');
+                        Vertical_HeadCell.textContent = workItem.fields['Custom.Vertical_Head'] && workItem.fields['Custom.Vertical_Head'].displayName;
+                        row.appendChild(Vertical_HeadCell);
+                      
+                        const RemarksCell = document.createElement('td');
+                        RemarksCell.textContent = workItem.fields['Custom.Remarks'];
+                        row.appendChild(RemarksCell);
+
+                        const BUCell = document.createElement('td');
+                        BUCell.textContent = workItem.fields['Custom.BU'];
+                        row.appendChild(BUCell);
+
+                        return row;
+                      }
+
+                      async function getworkitem(organization, projectName, token) {
+                      const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo] FROM WorkItems WHERE [System.TeamProject] = '${projectName}'`;
+                      const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/wiql?api-version=7.0`;
+                      const response = await fetch(url, {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          Authorization: "Bearer " + token
+                        },
+                        body: JSON.stringify({
+                          query: wiql,
+                        }),
+                      });
+                      const data = await response.json();
+                      const IDS = data.workItems;
+                      const workItemIds = IDS.map(element => element.id);
+                      return workItemIds;
                     }
 
-    //DROPDOWN
-    var dropdown = document.getElementById('projectDropdown');
-    var selectedProject;
-    var projectId;
-    var projectName;
-    // Sort the projects by name before iterating over them
-    projects.sort((a, b) => a.name.localeCompare(b.name));
-    // Iterate over the projects array and create an option element for each project
-    projects.forEach((project) => {
-    var option = document.createElement('option');
-    option.value = project.id; // Set the value of the option to the project ID
-    option.textContent = project.name; // Set the text content of the option to the project name
-    dropdown.appendChild(option); // Add the option to the dropdown
-    });
-    dropdown.addEventListener('change', (event) => {
-  // Clear the parent table
-  document.getElementById('parentTableBody').innerHTML = '';
-
-  // Clear the child table
-  document.getElementById('childTableBody').innerHTML = '';
-
-  // Clear the other table
-  document.getElementById('otherTableBody').innerHTML = '';
-
-  var selectedProjectId = event.target.value;
-  selectedProject = projects.find((project) => project.id === selectedProjectId);
-  projectName = selectedProject.name;
-
-  // Perform the desired operations using the selected project
-  console.log('Selected Project:', projectName);
-
-  // Clear the workItemIds array
-  workItemIds = [];
-    performOperation(organization, projectName, token);
-    // Function to handle the download button click
-// Function to convert a table to CSV format
-function convertTableToCSV(tableId) {
-  const table = document.getElementById(tableId);
-  const rows = Array.from(table.getElementsByTagName('tr'));
-
-  return rows.map(row => {
-    const columns = Array.from(row.getElementsByTagName('td'));
-    const rowData = columns.map(column => column.innerText);
-    return rowData.join(',');
-  }).join('\n');
-}
-
-// Function to handle the download button click
-function handleDownloadButtonClick() {
-  const parentTableContent = convertTableToCSV('parentTable');
-  const childTableContent = convertTableToCSV('childTable');
-  const otherTableContent = convertTableToCSV('otherTable');
-  const combinedContent = `${parentTableContent}\n${childTableContent}\n${otherTableContent}`;
-
-  const element = document.createElement('a');
-  const file = new Blob([combinedContent], { type: 'text/csv' });
-  element.href = URL.createObjectURL(file);
-  element.download = 'combinedTables.csv';
-  element.click();
-}
-
-// Attach event listener to the download button
-const downloadBtn = document.getElementById('downloadBtn');
-downloadBtn.addEventListener('click', handleDownloadButtonClick);
-    });
-                        VSS.notifyLoadSucceeded();
-                });    
+                    const batchSize = 200; // Maximum number of IDs to process at once
+                    WORKITEMSs = [];
                     
-            });
-    </script>
+                    async function getWorkItemsBatch(workItemIds, organization, projectName, token) {
+                      const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/workitemsbatch?api-version=7.0`;
+                      if (!workItemIds || workItemIds.length === 0) {
+                        console.log('No work item IDs to process.');
+                        return;
+                      }
+                      const payload = {
+                        ids: workItemIds,
+                        $expand: "all"
+                      };
+                    
+                      const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                          "Content-Type": "application/json",
+                          Authorization: "Bearer " + token
+                        },
+                        body: JSON.stringify(payload)
+                      });
+                      if (!response.ok) {
+                        const errorResponse = await response.json();
+                        console.error('Work item batch request failed:', errorResponse);
+                        return;
+                      }
+                      const data = await response.json();
+                      const D = data.value;
+                      WORKITEMSs.push(...D);
+                      console.log("WORKITEMS", WORKITEMSs);
+                    }
+
+                    async function processBatches(idArray, organization, projectName, token) {
+                      let startIndex = 0;
+                      let endIndex = batchSize;
+                    
+                      do {
+                        const batch = idArray.slice(startIndex, endIndex);
+                        await getWorkItemsBatch(batch, organization, projectName, token);
+                    
+                        startIndex = endIndex;
+                        endIndex = Math.min(startIndex + batchSize, idArray.length);
+                      } while (startIndex < idArray.length);
+                    }
+
+                    function flattenArray(array) {
+                      var flatMap = [];
+                      array.forEach((value) => {
+                        if (Array.isArray(value)) {
+                          flatMap = flatMap.concat(flattenArray(value));
+                        } else {
+                          flatMap.push(value);
+                        }
+                      });
+                      console.log("flatMap==>", flatMap);
+                      return flatMap;
+                    }
+
+                    async function getUniqueObjectsByURL(array) {
+                      const uniqueObjects = {};
+                      array.forEach((item) => {
+                        if (!uniqueObjects[item.url]) {
+                          uniqueObjects[item.url] = item;
+                        }
+                      });
+                    
+                      return Object.values(uniqueObjects);
+                    }
+
+                    VSS.ready(async function () {
+                      const projects = await client.getProjects();
+                      console.log(projects);
+                      const context = await VSS.getWebContext();
+                      const loggedinUser = context.user.email;
+                      const accesdetails = await VSS.getAccessToken();
+                      const token = accesdetails.token;
+                      const organization = context.collection.name;
+                      console.log("context", context, "\naccessdetails", accesdetails);
+
+                    
+                      async function performOperation(organization, projectName, token) {
+                        try {
+                          const workItemIds = await getworkitem(organization, projectName, token);
+                          await processBatches(workItemIds, organization, projectName, token);
+                        } catch (error) {
+                          console.error('Error:', error);
+                        }
+                      }
+
+                      // ...
+                    var stateDropdown = document.getElementById('stateDropdown');
+                    stateDropdown.addEventListener('change', function(){
+                      handleFilter();
+                    });
+                    var BUDropdown = document.getElementById('buDropdown');
+                    BUDropdown.addEventListener('change', function(){
+                      handleFilter();
+                    });
+                    var verticalHeadDropdown = document.getElementById('verticalHeadDropdown');
+                    verticalHeadDropdown.addEventListener('change', function(){
+                      handleFilter();
+                    });
+                    var workFlowTypeDropdown = document.getElementById('workFlowTypeDropdown');
+                    workFlowTypeDropdown.addEventListener('change', function(){
+                      handleFilter();
+                    });
+              
+                    function handleFilter(){
+                      document.getElementById('parentTableBody').innerText = "";
+                      var narrowDownFilteredItems = filteredItems;
+                        var stateDropdown = document.getElementById('stateDropdown');
+                        var BUDropdown = document.getElementById('buDropdown');
+                        var verticalHeadDropdown = document.getElementById('verticalHeadDropdown');
+                        var workFlowTypeDropdown = document.getElementById('workFlowTypeDropdown');
+                          const selectedState = stateDropdown.value;
+                          const selectedBU = BUDropdown.value;
+                          const selectedVH = verticalHeadDropdown.value;
+                          const selectedWFT = workFlowTypeDropdown.value;
+                          //STATE filter logic
+                if (selectedState !== 'Select State' && selectedState !== 'all') {
+                            narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
+                              return obj.fields && obj.fields['System.State'] === selectedState;
+                            });
+                          }          
+                          //BU filter logic
+                if (selectedBU !== 'Select BU' && selectedBU !== 'all') {
+                            narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
+                              return obj.fields && obj.fields['Custom.BU'] === selectedBU;
+                            });
+                          }
+                          //FIlter for selectedVH
+               if (selectedVH !== 'Select verticalHead' && selectedVH !== 'all') {
+                            narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
+                              return obj.fields && obj.fields['Custom.Vertical_Head'] && obj.fields['Custom.Vertical_Head'].displayName === selectedVH;
+                            });
+                          }
+                          //Filter for selectedWFT
+                if (selectedWFT !== 'Select workFlowType' && selectedWFT !== 'all') {
+                            narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
+                              return obj.fields && obj.fields['Custom.Workflow_type'] === selectedWFT;
+                            });
+                          }
+
+                          processWorkItems(narrowDownFilteredItems, token).catch((error) => {
+                              console.error(error);
+                            });
+                    }
+
+
+                      function addAllDropDowns(filteredItems){
+                      var stateDropdown = document.getElementById('stateDropdown');
+                      var BUDropdown = document.getElementById('buDropdown');
+                      var verticalHeadDropdown = document.getElementById('verticalHeadDropdown');
+                      var workFlowTypeDropdown = document.getElementById('workFlowTypeDropdown');
+                      BUTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.BU']))];
+                      stateTypes = [...new Set(filteredItems.map((user) => user.fields['System.State']))];
+                      verticalHeadTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.Vertical_Head'].displayName))];
+                      workFlowTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.Workflow_type']))];
+                      console.log("BUTypes",BUTypes);
+                      stateTypes.forEach((stateType)=>{
+                        if (!stateDropdown.querySelector(`option[value="${stateType}"]`)) {
+                                  var option = document.createElement('option');
+                                  option.value = stateType;
+                                  option.textContent = stateType;
+                                  stateDropdown.appendChild(option);
+                              }
+                      })
+                      BUTypes.forEach((BUType) => {
+                              if (!BUDropdown.querySelector(`option[value="${BUType}"]`)) {
+                                  var option = document.createElement('option');
+                                  option.value = BUType;
+                                  option.textContent = BUType;
+                                  BUDropdown.appendChild(option);
+                              }
+                              });
+                              verticalHeadTypes.forEach(( verticalHeadType) => {
+                              if (!verticalHeadDropdown.querySelector(`option[value="${verticalHeadType}"]`)) {
+                                  var option = document.createElement('option');
+                                  option.value =  verticalHeadType;
+                                  option.textContent =  verticalHeadType;
+                                  verticalHeadDropdown.appendChild(option);
+                              }
+                              });
+                              workFlowTypes.forEach((workFlowType) => {
+                              if (!workFlowTypeDropdown.querySelector(`option[value="${workFlowType}"]`)) {
+                                  var option = document.createElement('option');
+                                  option.value = workFlowType;
+                                  option.textContent = workFlowType;
+                                  workFlowTypeDropdown.appendChild(option);
+                              }
+                              });
+                              
+                    }
+                    // ...
+
+                      async function main() {
+                        for (const pro of projects) {
+                          const projectName = pro.name;
+                          await performOperation(organization, projectName, token);
+                        }
+                        console.log("WORKITEMS=====>", WORKITEMSs)
+
+                        // Flatten the WORKITEMS array
+                        let flattenedArray = flattenArray(WORKITEMSs);
+
+                        // Get unique objects based on obj.url parameter
+                        const uniqueObjects = await getUniqueObjectsByURL(flattenedArray);
+                        const uniqueObj = Array.from(uniqueObjects);
+
+                        console.log("Unique Objects:", uniqueObj);
+
+                        // Check if uniqueObj is defined and not empty before filtering
+                        if (uniqueObj && uniqueObj.length > 0) {
+                          filteredItems = uniqueObj.filter(w => w && w.fields && w.fields['System.WorkItemType'] === "Project");
+                          console.log("Unique and Filtered", filteredItems);
+                          addAllDropDowns(filteredItems);
+                          processWorkItems(filteredItems, token).catch((error) => {
+                            console.error(error);
+                          });
+                        } else {
+                          console.log("No unique objects found or uniqueObj is undefined or empty");
+                        }
+                        
+                      }
+                      main();
+
+                      document.getElementById("downloadBtn").addEventListener("click", function () {
+  var table = document.getElementById("parentTable");
+
+  if (table !== undefined) {
+    // Create a new jsPDF instance
+    var doc = new jsPDF();
+
+    // Generate the PDF
+    if (table.tagName.toLowerCase() === "table") {
+      // Export the specific table to PDF
+      doc.autoTable({ html: table });
+    } else {
+      // Export HTML content to PDF
+      doc.fromHTML(table, 15, 15);
+    }
+
+    // Save the PDF file
+    doc.save("export.pdf");
+  } else {
+    alert("Please fetch the data and export");
+  }
+});
+
+
+                      VSS.notifyLoadSucceeded();
+              });    
+                  
+          });
+  </script>
 </head>
 
 <body>
-    <div class="header">
-        <p id="headerName">Filter by projects</p>
-        <select id="projectDropdown">
-            <option disabled selected>Select Project</option>
-          </select>
-          <button id="downloadBtn">Download Combined Tables</button>
+  <div class="header">
+    <select id="stateDropdown">
+      <option value="all">All</option>
+      <option disabled selected>Select State</option>
+    </select>
+      <select id="buDropdown">
+        <option value="all">All</option>
+        <option disabled selected>Select BU</option>
+      </select>
+      <select id="verticalHeadDropdown">
+        <option value="all">All</option>
+        <option disabled selected>Select verticalHead</option>
+      </select>
+      <select id="workFlowTypeDropdown">
+        <option value="all">All</option>
+        <option disabled selected>Select workFlowType</option>
+      </select>
+      
+        <button id="downloadBtn">Download Table</button>
+  </div>
+  <div class="container">
+      <!-- Table for parent items -->
+      <table id="parentTable">
+        <thead>
+          <tr>
+            <th style="background-color: #99ccff;">Workflow_type</th>
+            <th style="background-color: #99ccff;">Type_of_Project</th>
+            <th style="background-color: #99ccff;">Application_Name</th>
+            <th>ID</th>
+            <th>Title</th>
+            <th>ScheduleStart</th>
+            <th>ScheduleFinish</th>
+            <th>ActualStartdate</th>
+            <th>ActualEndDate</th>
+            <th>Project_Phase</th>
+            <th>State</th>
+            <th>Project_Manager</th>
+            <th>Vertical_Head</th>
+            <th>Remarks</th>
+            <th>BU</th>
+          </tr>
+        </thead>
+        <tbody id="parentTableBody"></tbody>
+      </table>
     </div>
-    <div class="container">
-        <!-- Table for parent items -->
-        <table id="parentTable">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Title</th>
-              <th>WorkItemType</th>
-              <th>Status</th>
-              <th>Start Date</th>
-              <th>Priority</th>
-              <th>CreatedBy</th>
-              <th>ChangedDate</th>
-              <th>AuthorizedAs</th>
-              <th>Linked WorkItems</th>
-            </tr>
-          </thead>
-          <tbody id="parentTableBody"></tbody>
-        </table>
-    
-        <!-- Table for child items -->
-        <table id="childTable">
-          <tbody id="childTableBody"></tbody>
-        </table>
-    
-        <!-- Table for other items -->
-        <table id="otherTable">
-          <tbody id="otherTableBody"></tbody>
-        </table>
-      </div>
 </body>
 
 </html>
