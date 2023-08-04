@@ -2,9 +2,9 @@
     "manifestVersion": 1,
     "id": "workItemDetails",
     "publisher": "sanketdesai",
-    "version": "1.0.534",
+    "version": "1.0.815",
     "name": "workItemDetails",
-    "description": "A sample extension to view work item details",
+    "description": "An extension that generates workplan report",
     "public": false,
     "categories": ["Azure Repos"],
     "targets": [

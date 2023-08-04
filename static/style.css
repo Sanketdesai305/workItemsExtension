@@ -41,7 +41,6 @@ html,body {
   th,
   td {
     word-wrap: break-word;
-    max-width: 150px; /* Adjust this value as per your desired cell width */
     white-space: normal;
     align-items: center;
     justify-content: center;
@@ -54,10 +53,13 @@ html,body {
 #downloadBtn {
     margin: 5px;
 }
-
+th:nth-child(5) {
+  width: 450px;
+}
 th,td{
   width:150px;
 }
+
 #buDropdown,#verticalHeadDropdown,#workFlowTypeDropdown,#stateDropdown{
   margin: 3px 3px;
   padding: 10px;
@@ -95,4 +97,52 @@ th,td{
 }
 .green-background{
   background-color: #006400;
+}
+.loading {
+  position: fixed;
+  top: 70px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  z-index: 10;
+}
+.select {
+  height: 25px;
+  overflow: auto;
+}
+.select2-container .select2-selection {
+  height: 40px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.select2-results__options[aria-multiselectable="true"] li {
+  padding-left: 30px;
+  position: relative
+}
+  .select2-results__options[aria-multiselectable="true"] li:before {
+      position: absolute;
+      left: 8px;
+      opacity: .6;
+      top: 6px;
+      font-family: "FontAwesome";
+      content: '\f096';
+  }
+  .select2-container--default .select2-results__option--selected:before
+  {
+    content: '\f046'!important;
+  }
+  .select2-results__options[aria-multiselectable="true"] li[aria-selected="true"]:before {
+      content: '\f046';
+  }
+  button.select2-selection__choice__remove {
+    margin-top: -8px;
+}
+.select2-container--default .select2-search--inline .select2-search__field {
+  margin-top:12px;
 }

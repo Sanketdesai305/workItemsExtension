@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+    <link rel="stylesheet" type="text/css" href="css/example-styles.css">
+    <link rel="stylesheet" type="text/css" href="css/demo-styles.css">
+    <script type="text/javascript" src="js/jquery-2.2.4.min.js"></script>
+    <script type="text/javascript" src="js/jquery.multi-select.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+</head>
+<body>
+
+    <select id="people" name="people" multiple>
+        <option value="alice">Alice</option>
+        <option value="bob">Bob</option>
+        <option value="carol">Carol</option>
+</select>
+<select id="people" name="people" multiple>
+        <option value="alice">Alice</option>
+        <option value="bob">Bob</option>
+        <option value="carol">Carol</option>
+</select>
+
+      <script type="text/javascript">
+          $(function(){
+              $('#people').multiSelect();
+          });
+          
+
+$('#people').multiselect({
+    columns: 1,
+    placeholder: 'Select Languages',
+    search: true
+});
+      </script>
+</body>
+</html>

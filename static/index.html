@@ -1,9 +1,14 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 
-<head>
+<head> 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.min.js" integrity="sha512-3gJwYpMe3QewGELv8k/BX9vcqhryRdzRMxVfq6ngyWXwo03GFEzjsUm8Q7RZcHPHksttq7/GFoxjCVUjkjvPdw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="../lib/VSS.SDK.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> 
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" /> 
   <link rel="stylesheet" href="style.css">
   <script type="text/javascript" defer>
       VSS.init({
@@ -28,10 +33,11 @@
               var uniqueObj;
               var BUTypes =[];
               var filteredItems =[];
+              var childIDs;
 
-              async function processWorkItem(workItem, token) {
+              async function processWorkItem(workItem, token, grandchildWorkItem,childTitles = []) {
               const parentTableBody = document.getElementById('parentTableBody');
-              parentTableBody.appendChild(createTableRow(workItem,token));
+              parentTableBody.appendChild(createTableRow(workItem, token, grandchildWorkItem,childTitles));
 
               if (workItem.relations && Array.isArray(workItem.relations)) {
                 for (const relation of workItem.relations) {
@@ -42,7 +48,20 @@
                     const childWorkItemUrl = relation.url;
                     const childWorkItem = await getWorkItemDetails(childWorkItemUrl, token);
                     if (childWorkItem) {
-                      await processWorkItem(childWorkItem, token);
+                      // Pass the array of child titles when calling createTableRow recursively
+                      const updatedChildTitles = [...new Set([...childTitles, childWorkItem.fields['System.Title']])];
+                      if(childWorkItem.relations && Array.isArray(workItem.relations)){
+                            for (const relation of workItem.relations) {
+                              if (
+                                relation.attributes &&
+                                relation.attributes.name.toLowerCase().includes('child')
+                              ){
+                                 const grandchildWorkItemUrl = relation.url;
+                                var grandchildWorkItem = await getWorkItemDetails(grandchildWorkItemUrl, token);
+                              }
+                            }
+                      }
+                      await processWorkItem(childWorkItem, token,grandchildWorkItem, updatedChildTitles);
                     }
                   }
                 }
@@ -61,73 +80,60 @@
                     await processWorkItem(workItem, token);
                 }
               }
+              childIDs =[];
+              async function getWorkItemDetails(url, token) {
+                  try {
+                    // Append the $expand parameter to the URL
+                    const expandedUrl = url.includes('?') ? `${url}&$expand=all` : `${url}?$expand=all`;
 
-              async function getWorkItemDetails(url,token) {
-                try{
-                  const Res = await fetch(url,{
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: "Basic " + btoa("" + ":" + `${token}`)
-                  }
-                  });
+                    const Res = await fetch(expandedUrl, {
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Basic " + btoa("" + ":" + `${token}`)
+                      }
+                    });
+
                     const releaseData = await Res.json();
+                    childIDs.push(releaseData);
                     return releaseData;
-                }catch(e){
-                  console.log(e);
+                  } catch (e) {
+                    console.log(e);
+                  }
                 }
-                }
+
 
                 // function to create a table row with work item data
-                function createTableRow(workItem,token) {
-                     //SET CHILD STATE TO RED
-                function setChildStateToRed(workItem) {
-                  var currentDated = new Date();
-                  currentDated.setHours(0, 0, 0, 0);
-
-                  if (workItem.fields && workItem.fields['Custom.ScheduleFinish'] && workItem.fields['System.State'] !== 'Closed') {
-                    var scheduleFinish = new Date(workItem.fields['Custom.ScheduleFinish']);
-                    scheduleFinish.setHours(0, 0, 0, 0); // Set schedule finish date to midnight for accurate comparison
-
-                    var timeDiff = currentDated.getTime() - scheduleFinish.getTime();
-                    var daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
-
-                    return daysDiff >= 15; // Return true if the current date is not more than 15 days from the schedule finish date
-                  }
-
-                  return false;
-                };
-
+                function createTableRow(workItem,token,grandchildWorkItem,childTitles = []) {
+               
                
                         const row = document.createElement('tr');
+
                         if (workItem.fields && workItem.fields['System.WorkItemType'] === 'Project') {
                           row.classList.add('highlighted-row');
                         getChildWorkItems(workItem, token).then(childWorkItems => {
                           const childCount = childWorkItems.length;
-                          console.log(`Child count: ${childCount}`);
                           if (childCount > 0) {
                             const completedChildCount = childWorkItems.filter(child => child.fields && child.fields['System.State'] === 'Closed').length;
                             const completionPercentage = (completedChildCount / childCount) * 100;
-                            console.log(`Completion Percentage: ${completionPercentage}%`);
                             //DATE COMPARISON
                             var currentDate = new Date();
                             currentDate.setHours(0, 0, 0, 0); // Set current date to midnight for accurate comparison
 
-                            const delayedChild = childWorkItems.filter(child => {
-                              if (child.fields && child.fields['Custom.ScheduleFinish'] && child.fields['System.State'] !=='Closed') {
-                                var scheduleFinish = new Date(child.fields['Custom.ScheduleFinish']);
-                                scheduleFinish.setHours(0, 0, 0, 0); // Set schedule finish date to midnight for accurate comparison
+                          const delayedChild = childWorkItems.filter(child => {
+                            if (child.fields && child.fields['Custom.ScheduleFinish'] && child.fields['System.State'] !=='Closed') {
+                              var scheduleFinish = new Date(child.fields['Custom.ScheduleFinish']);
+                              scheduleFinish.setHours(0, 0, 0, 0); // Set schedule finish date to midnight for accurate comparison
 
-                                var timeDiff = currentDate.getTime() - scheduleFinish.getTime();
-                                var daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
-                                var monthDiff = (currentDate.getMonth() + currentDate.getFullYear() * 12) - (scheduleFinish.getMonth() + scheduleFinish.getFullYear() * 12);
+                              var timeDiff = currentDate.getTime() - scheduleFinish.getTime();
+                              var daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+                              var monthDiff = (currentDate.getMonth() + currentDate.getFullYear() * 12) - (scheduleFinish.getMonth() + scheduleFinish.getFullYear() * 12);
 
-                                return monthDiff > 0 || (monthDiff === 0 && daysDiff > 15);
-                              }
+                              return monthDiff > 0 || (monthDiff === 0 && daysDiff > 15);
+                            }
 
-                              return false; // Filter out child work items with missing or invalid Custom.ScheduleFinish
-                            });
+                            return false; // Filter out child work items with missing or invalid Custom.ScheduleFinish
+                          });
 
-                            console.log("delayedChild",delayedChild);
                          
                             //DATE COMPARISON
                             if (completionPercentage > 80 && delayedChild.length==0) {
@@ -164,7 +170,7 @@
                         }
                         
                         const Workflow_typeCell = document.createElement('td');
-                        Workflow_typeCell.textContent = workItem.fields['Custom.Workflow_type'];
+                        Workflow_typeCell.textContent = workItem.fields['Custom.WorkflowType'];
                         row.appendChild(Workflow_typeCell);
 
                         const Type_of_ProjectCell = document.createElement('td');
@@ -175,24 +181,63 @@
                         Application_NameCell.textContent = workItem.fields['Custom.Application_Name'];
                         row.appendChild(Application_NameCell);
 
+                        if(workItem && workItem.fields["System.WorkItemType"]==='Project'){
                         const idCell = document.createElement('td');
                         idCell.textContent = workItem.fields['System.Id'];
                         row.appendChild(idCell);
+                        }
 
+                        
+                        if(workItem.fields && workItem.fields["System.WorkItemType"]!=='Project'){
+                        const empty = document.createElement('td');
+                        empty.textContent = '';
+                        row.appendChild(empty);
+                        
+                        
+                        if (Array.isArray(childTitles) && childTitles.length > 1) {
+                          childTitles[0] = '';
+                        }
+                          const empty2 = document.createElement('td');
+                          empty2.textContent = '';
+                          row.appendChild(empty2);
+  
+                          childTitles.forEach((title, index) => {
+                          const childTitleCell = document.createElement('td');
+                          childTitleCell.textContent = title;
+                          row.appendChild(childTitleCell);
+                          });
+                        
+                      } 
+                      if(workItem && workItem.fields["System.WorkItemType"]==='Project'){
                         const titleCell = document.createElement('td');
                         titleCell.textContent = workItem.fields['System.Title'];
                         row.appendChild(titleCell);
-                                               
+                      
+                        const empty = document.createElement('td');
+                        empty.textContent = '';
+                        row.appendChild(empty);
+
+                        const empty2 = document.createElement('td');
+                        empty2.textContent = '';
+                        row.appendChild(empty2);
+                      }
+
+                      if (Array.isArray(childTitles) && childTitles.length == 1) {
+                        const empty2 = document.createElement('td');
+                        empty2.textContent = '';
+                        row.appendChild(empty2);
+                      }
+
                         const ScheduleStartCell = document.createElement('td');
-                        ScheduleStartCell.textContent = workItem.fields['Custom.ScheduleStart'];
+                        ScheduleStartCell.textContent = workItem.fields['Custom.Schedule_Start'];
                         row.appendChild(ScheduleStartCell);
 
                         const ScheduleFinishCell = document.createElement('td');
-                        ScheduleFinishCell.textContent = workItem.fields['Custom.ScheduleFinish'];
+                        ScheduleFinishCell.textContent = workItem.fields['Custom.Schedule_Finish'];
                         row.appendChild(ScheduleFinishCell);
                       
                         const ActualStartdateCell = document.createElement('td');
-                        ActualStartdateCell.textContent = workItem.fields['Custom.ActualStartdate'];
+                        ActualStartdateCell.textContent = workItem.fields['Custom.ActualStartDate'];
                         row.appendChild(ActualStartdateCell);
 
                         const ActualEndDateCell = document.createElement('td');
@@ -207,30 +252,72 @@
                         statusStartDateCell.textContent = `${workItem.fields['System.State']}`;
                         row.appendChild(statusStartDateCell);
                        
-                        var red = setChildStateToRed(workItem);
-                        if(red){
-                          statusStartDateCell.classList.add('red-background');
+                        //SET CHILD STATE TO RED
+                        async function setChildStateToRed(workItem) {
+                        if (workItem.relations && workItem.relations.attributes && workItem.relations.attributes.name == 'Parent') {
+                          var currentDated = new Date();
+                          currentDated.setHours(0, 0, 0, 0);
+
+                          if (workItem.fields && workItem.fields['Custom.ScheduleFinish'] && workItem.fields['System.State'] !== 'Closed') {
+                            var scheduleFinish = new Date(workItem.fields['Custom.ScheduleFinish']);
+                            scheduleFinish.setHours(0, 0, 0, 0);
+
+                            var timeDiff = currentDated.getTime() - scheduleFinish.getTime();
+                            var daysDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+
+                            return daysDiff >= 15;
+                          }
                         }
 
-                        const Project_ManagerCell = document.createElement('td');
-                        Project_ManagerCell.textContent = workItem.fields['Custom.Project_Manager'];
-                        row.appendChild(Project_ManagerCell);
+                        return false;
+                      }
 
-                        const Vertical_HeadCell = document.createElement('td');
-                        Vertical_HeadCell.textContent = workItem.fields['Custom.Vertical_Head'] && workItem.fields['Custom.Vertical_Head'].displayName;
-                        row.appendChild(Vertical_HeadCell);
+                      async function applyRedBackgroundIfNecessary(workItem) {
+                        const result = await setChildStateToRed(workItem);
+                        if (result) {
+                          statusStartDateCell.classList.add('red-background');
+                        }
+                      }
+
+                      applyRedBackgroundIfNecessary(workItem);
+
+
+                        const App_ManagerCell = document.createElement('td');
+                        App_ManagerCell.textContent = workItem.fields['Custom.App_Manager']  ? workItem.fields['Custom.App_Manager'].displayName : '';
+                        row.appendChild(App_ManagerCell);
+
+                        const TLTCell = document.createElement('td');
+                        TLTCell.textContent = workItem.fields['Custom.TLT'] ? workItem.fields['Custom.TLT'].displayName : '';
+                        row.appendChild(TLTCell);
                       
                         const RemarksCell = document.createElement('td');
-                        RemarksCell.textContent = workItem.fields['Custom.Remarks'];
+                        var div = document.createElement("div");
+                        div.innerHTML = workItem.fields['Custom.Remarks'];
+                        var text = div.textContent || div.innerText || "";
+                        if(text == 'undefined'){
+                          text = '';
+                        }
+                        RemarksCell.textContent = text;
                         row.appendChild(RemarksCell);
 
                         const BUCell = document.createElement('td');
                         BUCell.textContent = workItem.fields['Custom.BU'];
                         row.appendChild(BUCell);
+                        
+                        const BSGCell = document.createElement('td');
+                        BSGCell.textContent = workItem.fields['Custom.BSG_Spoc'] ? workItem.fields['Custom.BSG_Spoc'].displayName : '';
+                        row.appendChild(BSGCell);
 
+                        const ApplicationIdCell = document.createElement('td');
+                        ApplicationIdCell.textContent = workItem.fields['Custom.ApplicationID'];
+                        row.appendChild(ApplicationIdCell);
+
+                        const DemandIdCell = document.createElement('td');
+                        DemandIdCell.textContent = workItem.fields['Custom.DemandID'];
+                        row.appendChild(DemandIdCell);
                         return row;
                       }
-
+                     
                       async function getworkitem(organization, projectName, token) {
                       const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo] FROM WorkItems WHERE [System.TeamProject] = '${projectName}'`;
                       const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/wiql?api-version=7.0`;
@@ -254,34 +341,41 @@
                     WORKITEMSs = [];
                     
                     async function getWorkItemsBatch(workItemIds, organization, projectName, token) {
-                      const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/workitemsbatch?api-version=7.0`;
-                      if (!workItemIds || workItemIds.length === 0) {
-                        console.log('No work item IDs to process.');
-                        return;
-                      }
+                    const url = `https://dev.azure.com/${organization}/${projectName}/_apis/wit/workitemsbatch?api-version=7.0`;
+
+                    if (workItemIds.length > 0) {
                       const payload = {
                         ids: workItemIds,
                         $expand: "all"
                       };
-                    
-                      const response = await fetch(url, {
-                        method: 'POST',
-                        headers: {
-                          "Content-Type": "application/json",
-                          Authorization: "Bearer " + token
-                        },
-                        body: JSON.stringify(payload)
-                      });
-                      if (!response.ok) {
-                        const errorResponse = await response.json();
-                        console.error('Work item batch request failed:', errorResponse);
-                        return;
+
+                      try {
+                        const response = await fetch(url, {
+                          method: 'POST',
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: "Bearer " + token
+                          },
+                          body: JSON.stringify(payload)
+                        });
+
+                        if (!response.ok) {
+                          const errorResponse = await response.json();
+                          console.error('Work item batch request failed:', errorResponse);
+                          return;
+                        }
+
+                        const data = await response.json();
+                        const D = data.value;
+                        WORKITEMSs.push(...D);
+                      } catch (error) {
+                        console.error('Error occurred while fetching work items:', error);
                       }
-                      const data = await response.json();
-                      const D = data.value;
-                      WORKITEMSs.push(...D);
-                      console.log("WORKITEMS", WORKITEMSs);
+                    } else {
+                      console.error('No work item IDs to fetch.');
                     }
+                  }
+
 
                     async function processBatches(idArray, organization, projectName, token) {
                       let startIndex = 0;
@@ -305,7 +399,6 @@
                           flatMap.push(value);
                         }
                       });
-                      console.log("flatMap==>", flatMap);
                       return flatMap;
                     }
 
@@ -322,15 +415,11 @@
 
                     VSS.ready(async function () {
                       const projects = await client.getProjects();
-                      console.log(projects);
                       const context = await VSS.getWebContext();
                       const loggedinUser = context.user.email;
                       const accesdetails = await VSS.getAccessToken();
                       const token = accesdetails.token;
-                      const organization = context.collection.name;
-                      console.log("context", context, "\naccessdetails", accesdetails);
-
-                    
+                      const organization = context.collection.name;                 
                       async function performOperation(organization, projectName, token) {
                         try {
                           const workItemIds = await getworkitem(organization, projectName, token);
@@ -341,60 +430,120 @@
                       }
 
                       // ...
-                    var stateDropdown = document.getElementById('stateDropdown');
-                    stateDropdown.addEventListener('change', function(){
-                      handleFilter();
+                      //STATEDROP
+                      var StateData = [];
+                      var BUData = [];
+                      var VerticalData = [];
+                      var WorkFlowData = [];
+                    $('#stateDropdown').on('select2:select', function (e) {
+                      StateData.push(e.params.data.text);
+                      console.log("StateData", StateData);
+                      handleFilter(StateData,BUData,VerticalData,WorkFlowData);
                     });
-                    var BUDropdown = document.getElementById('buDropdown');
-                    BUDropdown.addEventListener('change', function(){
-                      handleFilter();
+
+                    $('#stateDropdown').on('select2:unselect', function (e) {
+                      var index = StateData.indexOf(e.params.data.text);
+                      if (index !== -1) {
+                        StateData.splice(index, 1);
+                      }
+                      console.log("StateData", StateData);
+                      handleFilter(StateData,BUData,VerticalData,WorkFlowData);
                     });
-                    var verticalHeadDropdown = document.getElementById('verticalHeadDropdown');
-                    verticalHeadDropdown.addEventListener('change', function(){
-                      handleFilter();
+                    //BUDROP
+                   
+                    $('#buDropdown').on('select2:select', function (e) {
+                      BUData.push(e.params.data.text);
+                      console.log("BUData", BUData);
+                      handleFilter(StateData,BUData,VerticalData,WorkFlowData);
                     });
-                    var workFlowTypeDropdown = document.getElementById('workFlowTypeDropdown');
-                    workFlowTypeDropdown.addEventListener('change', function(){
-                      handleFilter();
+
+                    $('#buDropdown').on('select2:unselect', function (e) {
+                      var index = BUData.indexOf(e.params.data.text);
+                      if (index !== -1) {
+                        BUData.splice(index, 1);
+                      }
+                      console.log("BUData", BUData);
+                      handleFilter(StateData,BUData,VerticalData,WorkFlowData);
                     });
+                    //VERTICALDROP
+                    
+                    $('#verticalHeadDropdown').on('select2:select', function (e) {
+                      VerticalData.push(e.params.data.text);
+                      console.log("VerticalData", VerticalData);
+                      handleFilter(StateData,BUData,VerticalData,WorkFlowData);
+                    });
+
+                    $('#verticalHeadDropdown').on('select2:unselect', function (e) {
+                      var index = VerticalData.indexOf(e.params.data.text);
+                      if (index !== -1) {
+                        VerticalData.splice(index, 1);
+                      }
+                      console.log("VerticalData", VerticalData);
+                      handleFilter(StateData,BUData,VerticalData,WorkFlowData);
+                    });
+                    //WORKFLOWTYPEDROP
+                    
+                    $('#workFlowTypeDropdown').on('select2:select', function (e) {
+                      WorkFlowData.push(e.params.data.text);
+                      console.log("WorkFlowData", WorkFlowData);
+                      handleFilter(StateData,BUData,VerticalData,WorkFlowData);
+                    });
+
+                    $('#workFlowTypeDropdown').on('select2:unselect', function (e) {
+                      var index = WorkFlowData.indexOf(e.params.data.text);
+                      if (index !== -1) {
+                        WorkFlowData.splice(index, 1);
+                      }
+                      console.log("WorkFlowData", WorkFlowData);
+                      handleFilter(StateData,BUData,VerticalData,WorkFlowData);
+                    });
+                    //.....
               
-                    function handleFilter(){
+                    function handleFilter(StateData,BUData,VerticalData,WorkFlowData){
                       document.getElementById('parentTableBody').innerText = "";
                       var narrowDownFilteredItems = filteredItems;
-                        var stateDropdown = document.getElementById('stateDropdown');
-                        var BUDropdown = document.getElementById('buDropdown');
-                        var verticalHeadDropdown = document.getElementById('verticalHeadDropdown');
-                        var workFlowTypeDropdown = document.getElementById('workFlowTypeDropdown');
-                          const selectedState = stateDropdown.value;
-                          const selectedBU = BUDropdown.value;
-                          const selectedVH = verticalHeadDropdown.value;
-                          const selectedWFT = workFlowTypeDropdown.value;
                           //STATE filter logic
-                if (selectedState !== 'Select State' && selectedState !== 'all') {
-                            narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
-                              return obj.fields && obj.fields['System.State'] === selectedState;
-                            });
-                          }          
+                          if (StateData.includes('All') || StateData.length == 0 ) {
+                        }
+                        else{
+                          narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
+                            let fil = obj.fields && obj.fields['System.State'];
+                            return StateData.includes(fil);
+                          });
+                        } 
+     
                           //BU filter logic
-                if (selectedBU !== 'Select BU' && selectedBU !== 'all') {
+                          if (BUData.includes('All') || BUData.length == 0) {
+                        }
+                        else {
                             narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
-                              return obj.fields && obj.fields['Custom.BU'] === selectedBU;
+                              return obj.fields && BUData.includes(obj.fields['Custom.BU']);
                             });
                           }
+                          
                           //FIlter for selectedVH
-               if (selectedVH !== 'Select verticalHead' && selectedVH !== 'all') {
+                          if (VerticalData.includes('All') || VerticalData.length == 0) {
+                         
+                        }
+                        else {
                             narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
-                              return obj.fields && obj.fields['Custom.Vertical_Head'] && obj.fields['Custom.Vertical_Head'].displayName === selectedVH;
+                              return obj.fields && obj.fields['Custom.TLT'] && VerticalData.includes(obj.fields['Custom.TLT'].displayName);
                             });
                           }
+                          
                           //Filter for selectedWFT
-                if (selectedWFT !== 'Select workFlowType' && selectedWFT !== 'all') {
+                          if (WorkFlowData.includes('All') || WorkFlowData.length == 0) {
+                        }
+                        else {
                             narrowDownFilteredItems = narrowDownFilteredItems.filter((obj) => {
-                              return obj.fields && obj.fields['Custom.Workflow_type'] === selectedWFT;
+                              return obj.fields && WorkFlowData.includes(obj.fields['Custom.WorkflowType']);
                             });
                           }
+                          
 
-                          processWorkItems(narrowDownFilteredItems, token).catch((error) => {
+                          processWorkItems(narrowDownFilteredItems, token)
+                          .then(()=>alert("Load Complete!!!!!"))
+                          .catch((error) => {
                               console.error(error);
                             });
                     }
@@ -405,13 +554,16 @@
                       var BUDropdown = document.getElementById('buDropdown');
                       var verticalHeadDropdown = document.getElementById('verticalHeadDropdown');
                       var workFlowTypeDropdown = document.getElementById('workFlowTypeDropdown');
-                      BUTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.BU']))];
-                      stateTypes = [...new Set(filteredItems.map((user) => user.fields['System.State']))];
-                      verticalHeadTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.Vertical_Head'].displayName))];
-                      workFlowTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.Workflow_type']))];
+                      BUTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.BU'] && user.fields['Custom.BU']))];
                       console.log("BUTypes",BUTypes);
+                      stateTypes = [...new Set(filteredItems.map((user) => user.fields['System.State'] && user.fields['System.State']))];
+                      console.log("stateTypes",stateTypes);
+                      verticalHeadTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.TLT'] && user.fields['Custom.TLT'].displayName))];
+                      console.log("verticalHeadTypes",verticalHeadTypes);
+                      workFlowTypes = [...new Set(filteredItems.map((user) => user.fields['Custom.WorkflowType'] && user.fields['Custom.WorkflowType']))];
+                      console.log("workFlowTypes",workFlowTypes);
                       stateTypes.forEach((stateType)=>{
-                        if (!stateDropdown.querySelector(`option[value="${stateType}"]`)) {
+                        if (!stateDropdown.querySelector(`option[value="${stateType}"]`) && typeof stateType !== 'undefined') {
                                   var option = document.createElement('option');
                                   option.value = stateType;
                                   option.textContent = stateType;
@@ -419,7 +571,7 @@
                               }
                       })
                       BUTypes.forEach((BUType) => {
-                              if (!BUDropdown.querySelector(`option[value="${BUType}"]`)) {
+                              if (!BUDropdown.querySelector(`option[value="${BUType}"]`) && typeof BUType !== 'undefined') {
                                   var option = document.createElement('option');
                                   option.value = BUType;
                                   option.textContent = BUType;
@@ -427,7 +579,7 @@
                               }
                               });
                               verticalHeadTypes.forEach(( verticalHeadType) => {
-                              if (!verticalHeadDropdown.querySelector(`option[value="${verticalHeadType}"]`)) {
+                              if (!verticalHeadDropdown.querySelector(`option[value="${verticalHeadType}"]`) && typeof verticalHeadType !== 'undefined') {
                                   var option = document.createElement('option');
                                   option.value =  verticalHeadType;
                                   option.textContent =  verticalHeadType;
@@ -435,7 +587,7 @@
                               }
                               });
                               workFlowTypes.forEach((workFlowType) => {
-                              if (!workFlowTypeDropdown.querySelector(`option[value="${workFlowType}"]`)) {
+                              if (!workFlowTypeDropdown.querySelector(`option[value="${workFlowType}"]`) && typeof workFlowType !== 'undefined') {
                                   var option = document.createElement('option');
                                   option.value = workFlowType;
                                   option.textContent = workFlowType;
@@ -447,11 +599,11 @@
                     // ...
 
                       async function main() {
+                        let start = performance.now();
                         for (const pro of projects) {
                           const projectName = pro.name;
                           await performOperation(organization, projectName, token);
                         }
-                        console.log("WORKITEMS=====>", WORKITEMSs)
 
                         // Flatten the WORKITEMS array
                         let flattenedArray = flattenArray(WORKITEMSs);
@@ -459,47 +611,85 @@
                         // Get unique objects based on obj.url parameter
                         const uniqueObjects = await getUniqueObjectsByURL(flattenedArray);
                         const uniqueObj = Array.from(uniqueObjects);
-
-                        console.log("Unique Objects:", uniqueObj);
-
+                        console.log("uniqueObj",uniqueObj);
+                        
+                        
                         // Check if uniqueObj is defined and not empty before filtering
                         if (uniqueObj && uniqueObj.length > 0) {
                           filteredItems = uniqueObj.filter(w => w && w.fields && w.fields['System.WorkItemType'] === "Project");
-                          console.log("Unique and Filtered", filteredItems);
                           addAllDropDowns(filteredItems);
-                          processWorkItems(filteredItems, token).catch((error) => {
+                          processWorkItems(filteredItems, token)
+                          .then(()=>alert("Load Complete!!!!!"))
+                          .catch((error) => {
                             console.error(error);
                           });
                         } else {
                           console.log("No unique objects found or uniqueObj is undefined or empty");
                         }
-                        
+                        let finish = performance.now();
+                        t = finish - start;
+                        var time = Math.floor(t)
+                        console.log("time",time);
+                        var containerElement = document.getElementById('parentTable');
+                      var loadingElement = document.createElement('div');
+                      loadingElement.classList.add('loading');
+                      loadingElement.innerText = 'Loading...';
+                      containerElement.appendChild(loadingElement);
+                      setTimeout(showContainer, time);
+                      function showContainer() {
+                      containerElement.removeChild(loadingElement);
                       }
+                      }
+                     
                       main();
 
-                      document.getElementById("downloadBtn").addEventListener("click", function () {
-  var table = document.getElementById("parentTable");
 
-  if (table !== undefined) {
-    // Create a new jsPDF instance
-    var doc = new jsPDF();
+                      function convertTableToCSV(tableId) {
+                      const table = document.getElementById(tableId);
+                      const rows = Array.from(table.getElementsByTagName('tr'));
 
-    // Generate the PDF
-    if (table.tagName.toLowerCase() === "table") {
-      // Export the specific table to PDF
-      doc.autoTable({ html: table });
-    } else {
-      // Export HTML content to PDF
-      doc.fromHTML(table, 15, 15);
-    }
+                      // Get the table headers
+                      const headerRow = rows.shift(); // Remove the header row from the rows array
+                      const headerColumns = Array.from(headerRow.getElementsByTagName('th'));
+                      const headerData = headerColumns.map(column => {
+                        const headerText = column.innerText;
+                        return (headerText === "Title") ? '"Title","Title2","Title3"' : `"${headerText}"`;
+                      });
 
-    // Save the PDF file
-    doc.save("export.pdf");
-  } else {
-    alert("Please fetch the data and export");
-  }
-});
+                      const csvRows = rows.map(row => {
+                        const columns = Array.from(row.getElementsByTagName('td'));
+                        const rowData = columns.map(column => {
+                          let cellContent = column.innerText;
+                          // Escape cell content if it contains commas or newline characters
+                          if (cellContent.includes(',') || cellContent.includes('\n')) {
+                            cellContent = `"${cellContent.replace(/"/g, '""')}"`;
+                          }
+                          return cellContent;
+                        });
+                        return rowData.join(',');
+                      });
 
+                      // Add the header row to the CSV data
+                      csvRows.unshift(headerData.join(','));
+
+                      return csvRows.join('\n');
+                    }
+
+                        // Function to handle the download button click
+                        function handleDownloadButtonClick() {
+                          const parentTableContent = convertTableToCSV('parentTable');
+                          const combinedContent = `${parentTableContent}`;
+
+                          const element = document.createElement('a');
+                          const file = new Blob([combinedContent], { type: 'text/csv' });
+                          element.href = URL.createObjectURL(file);
+                          element.download = 'Milestone Report.csv';
+                          element.click();
+                        }
+
+                          // Attach event listener to the download button
+                          const downloadBtn = document.getElementById('downloadBtn');
+                          downloadBtn.addEventListener('click', handleDownloadButtonClick);
 
                       VSS.notifyLoadSucceeded();
               });    
@@ -510,23 +700,18 @@
 
 <body>
   <div class="header">
-    <select id="stateDropdown">
+    <select id="stateDropdown" name="states[]" multiple="multiple" data-placeholder="Select State">
       <option value="all">All</option>
-      <option disabled selected>Select State</option>
     </select>
-      <select id="buDropdown">
+      <select id="buDropdown" name="states[]" multiple="multiple" data-placeholder="Select BU">
         <option value="all">All</option>
-        <option disabled selected>Select BU</option>
       </select>
-      <select id="verticalHeadDropdown">
+      <select id="verticalHeadDropdown" name="states[]" multiple="multiple" data-placeholder="Select TLT">
         <option value="all">All</option>
-        <option disabled selected>Select verticalHead</option>
       </select>
-      <select id="workFlowTypeDropdown">
+      <select id="workFlowTypeDropdown" name="states[]" multiple="multiple" data-placeholder="Select workFlowType">
         <option value="all">All</option>
-        <option disabled selected>Select workFlowType</option>
       </select>
-      
         <button id="downloadBtn">Download Table</button>
   </div>
   <div class="container">
@@ -534,26 +719,34 @@
       <table id="parentTable">
         <thead>
           <tr>
-            <th style="background-color: #99ccff;">Workflow_type</th>
-            <th style="background-color: #99ccff;">Type_of_Project</th>
-            <th style="background-color: #99ccff;">Application_Name</th>
+            <th>Workflow_type</th>
+            <th>Type_of_Project</th>
+            <th>Application_Name</th>
             <th>ID</th>
-            <th>Title</th>
+            <th colspan="3">Title</th>
             <th>ScheduleStart</th>
             <th>ScheduleFinish</th>
             <th>ActualStartdate</th>
             <th>ActualEndDate</th>
             <th>Project_Phase</th>
             <th>State</th>
-            <th>Project_Manager</th>
-            <th>Vertical_Head</th>
+            <th>App_manager</th>
+            <th>TLT</th>
             <th>Remarks</th>
             <th>BU</th>
+            <th>BSG_Spoc</th>
+            <th>ApplicationID</th>
+            <th>DemandID</th>
           </tr>
         </thead>
         <tbody id="parentTableBody"></tbody>
-      </table>
+      </table> 
     </div>
+    <script>
+      $(document).ready(function() {
+        $('#stateDropdown, #buDropdown, #verticalHeadDropdown, #workFlowTypeDropdown').select2();
+      });
+    </script>
 </body>
 
 </html>
