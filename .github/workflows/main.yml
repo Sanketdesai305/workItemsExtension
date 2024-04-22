@@ -1,0 +1,22 @@
+name: Gather data for Flat Data
+on:
+  push:
+    branches:
+      - main
+jobs:
+  data_gathering:
+    runs-on: ubuntu-latest
+    steps:
+      - # Generate issues and save results
+        uses: zbazztian/ghas-reports-action@main
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          # optionally define rep (default is calling repo)
+          repo: 'Sanketdesai305/loginsystem'
+        env:
+          org: "Sanketdesai305"
+
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: results
+          path: alerts.xlsx
